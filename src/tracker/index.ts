@@ -469,6 +469,20 @@ type MetricEntry = PerformanceEntry & {
     let activationStart = 0;
     let pageStartTime = 0;
 
+    // Time the page was first hidden (web-vitals: ignore LCP/FCP at or after it)
+    let firstHiddenTime = document.visibilityState === 'hidden' ? 0 : Infinity;
+    if (firstHiddenTime !== 0) {
+      addEventListener(
+        'visibilitychange',
+        event => {
+          if (document.visibilityState === 'hidden' && firstHiddenTime === Infinity) {
+            firstHiddenTime = event.timeStamp;
+          }
+        },
+        true,
+      );
+    }
+
     const observe = (type: string, callback: (entry: MetricEntry) => void) => {
       try {
         const observer = new PerformanceObserver(list => {
@@ -488,13 +502,14 @@ type MetricEntry = PerformanceEntry & {
 
     // FCP
     observe('paint', entry => {
-      if (entry.name === 'first-contentful-paint') {
+      if (entry.name === 'first-contentful-paint' && entry.startTime < firstHiddenTime) {
         metrics.fcp = Math.max(entry.startTime - activationStart, 0);
       }
     });
 
     // LCP
     observe('largest-contentful-paint', entry => {
+      if (entry.startTime >= firstHiddenTime) return;
       metrics.lcp = Math.max(entry.startTime - activationStart, 0);
     });
 
@@ -577,7 +592,7 @@ type MetricEntry = PerformanceEntry & {
         const fcpEntry = getEntriesByType('paint')?.find(
           entry => entry.name === 'first-contentful-paint',
         );
-        if (fcpEntry) {
+        if (fcpEntry && fcpEntry.startTime < firstHiddenTime) {
           metrics.fcp = Math.max(fcpEntry.startTime - activationStart, 0);
         }
       }
@@ -585,7 +600,7 @@ type MetricEntry = PerformanceEntry & {
       if (metrics.lcp === undefined) {
         const lcpEntries = getEntriesByType('largest-contentful-paint');
         const lcpEntry = lcpEntries?.[lcpEntries.length - 1];
-        if (lcpEntry) {
+        if (lcpEntry && lcpEntry.startTime < firstHiddenTime) {
           metrics.lcp = Math.max(lcpEntry.startTime - activationStart, 0);
         }
       }
