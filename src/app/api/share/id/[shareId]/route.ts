@@ -16,6 +16,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ shar
 
   const share = await getShare(shareId);
 
+  if (!share) {
+    return notFound({ message: 'Share not found.' });
+  }
+
   if (!(await canViewEntity(auth, share.entityId))) {
     return unauthorized();
   }
@@ -72,11 +76,24 @@ export async function DELETE(
 
   const share = await getShare(shareId);
 
+  if (!share) {
+    return notFound({ message: 'Share not found.' });
+  }
+
   if (!(await canDeleteEntity(auth, share.entityId))) {
     return unauthorized();
   }
 
-  await deleteShare(shareId);
+  try {
+    await deleteShare(shareId);
+  } catch (e) {
+    // Prisma P2025: record deleted between lookup and delete.
+    if ((e as { code?: string })?.code === 'P2025') {
+      return notFound({ message: 'Share not found.' });
+    }
+
+    throw e;
+  }
 
   return ok();
 }

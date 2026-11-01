@@ -137,6 +137,12 @@ test.describe('Shares', () => {
     expect(anonymous.status).toBe(401);
   });
 
+  test('GET /api/share/id/{shareId} returns 404 for an unknown id', async ({ admin }) => {
+    const response = await admin.get(`/api/share/id/${UNKNOWN_UUID}`);
+
+    expect(response.status).toBe(404);
+  });
+
   test('POST /api/share/id/{shareId} updates a share', async ({ admin, viewer }) => {
     const name = uniqueName('renamed');
     slug = uniqueSlug('renamed');
@@ -266,5 +272,11 @@ test.describe('Shares', () => {
     expect(gone.status).toBe(404);
 
     shareId = '';
+  });
+
+  test('DELETE /api/share/id/{shareId} returns 404 for an unknown id', async ({ admin }) => {
+    const response = await admin.del(`/api/share/id/${UNKNOWN_UUID}`);
+
+    expect(response.status).toBe(404);
   });
 });
