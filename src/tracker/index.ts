@@ -469,6 +469,19 @@ type MetricEntry = PerformanceEntry & {
     let activationStart = 0;
     let pageStartTime = 0;
 
+    // LCP/FCP are discarded if the page was hidden before they fired
+    let firstHiddenTime = document.visibilityState === 'hidden' ? 0 : Infinity;
+    document.addEventListener(
+      'visibilitychange',
+      event => {
+        if (document.visibilityState === 'hidden' && firstHiddenTime === Infinity) {
+          firstHiddenTime = event.timeStamp;
+        }
+      },
+      true,
+    );
+    const wasVisible = (entry: MetricEntry) => entry.startTime < firstHiddenTime;
+
     const observe = (type: string, callback: (entry: MetricEntry) => void) => {
       try {
         const observer = new PerformanceObserver(list => {
@@ -488,14 +501,16 @@ type MetricEntry = PerformanceEntry & {
 
     // FCP
     observe('paint', entry => {
-      if (entry.name === 'first-contentful-paint') {
+      if (entry.name === 'first-contentful-paint' && wasVisible(entry)) {
         metrics.fcp = Math.max(entry.startTime - activationStart, 0);
       }
     });
 
     // LCP
     observe('largest-contentful-paint', entry => {
-      metrics.lcp = Math.max(entry.startTime - activationStart, 0);
+      if (wasVisible(entry)) {
+        metrics.lcp = Math.max(entry.startTime - activationStart, 0);
+      }
     });
 
     // CLS - session windows algorithm (gap < 1s, max 5s duration; report worst window)
@@ -577,7 +592,7 @@ type MetricEntry = PerformanceEntry & {
         const fcpEntry = getEntriesByType('paint')?.find(
           entry => entry.name === 'first-contentful-paint',
         );
-        if (fcpEntry) {
+        if (fcpEntry && wasVisible(fcpEntry)) {
           metrics.fcp = Math.max(fcpEntry.startTime - activationStart, 0);
         }
       }
@@ -585,7 +600,7 @@ type MetricEntry = PerformanceEntry & {
       if (metrics.lcp === undefined) {
         const lcpEntries = getEntriesByType('largest-contentful-paint');
         const lcpEntry = lcpEntries?.[lcpEntries.length - 1];
-        if (lcpEntry) {
+        if (lcpEntry && wasVisible(lcpEntry)) {
           metrics.lcp = Math.max(lcpEntry.startTime - activationStart, 0);
         }
       }

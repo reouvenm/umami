@@ -2,10 +2,10 @@ import z from 'zod';
 import { uuid } from '@/lib/crypto';
 import { getRandomChars } from '@/lib/generate';
 import { parseRequest } from '@/lib/request';
-import { json, unauthorized } from '@/lib/response';
+import { badRequest, json, unauthorized } from '@/lib/response';
 import { anyObjectParam } from '@/lib/schema';
 import { canUpdateEntity } from '@/permissions';
-import { createShare } from '@/queries/prisma';
+import { createShare, getShareByCode } from '@/queries/prisma';
 
 export async function POST(request: Request) {
   const schema = z.object({
@@ -29,14 +29,27 @@ export async function POST(request: Request) {
     return unauthorized();
   }
 
-  const share = await createShare({
-    id: uuid(),
-    entityId,
-    shareType,
-    name,
-    slug: slug || getRandomChars(16),
-    parameters: shareParameters,
-  });
+  if (slug && (await getShareByCode(slug))) {
+    return badRequest({ message: 'A share with this slug already exists.' });
+  }
 
-  return json(share);
+  try {
+    const share = await createShare({
+      id: uuid(),
+      entityId,
+      shareType,
+      name,
+      slug: slug || getRandomChars(16),
+      parameters: shareParameters,
+    });
+
+    return json(share);
+  } catch (e: any) {
+    // Unique constraint violation: a concurrent request took the slug
+    if (e?.code === 'P2002') {
+      return badRequest({ message: 'A share with this slug already exists.' });
+    }
+
+    throw e;
+  }
 }
