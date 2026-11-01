@@ -486,15 +486,20 @@ type MetricEntry = PerformanceEntry & {
       metrics.ttfb = Math.max(entry.responseStart - activationStart, 0);
     });
 
+    // Discard LCP/FCP from pages hidden before the metric fired
+    let firstHiddenTime = document.visibilityState === 'hidden' ? 0 : Infinity;
+    const firedWhileVisible = (entry: MetricEntry) => entry.startTime < firstHiddenTime;
+
     // FCP
     observe('paint', entry => {
-      if (entry.name === 'first-contentful-paint') {
+      if (entry.name === 'first-contentful-paint' && firedWhileVisible(entry)) {
         metrics.fcp = Math.max(entry.startTime - activationStart, 0);
       }
     });
 
     // LCP
     observe('largest-contentful-paint', entry => {
+      if (!firedWhileVisible(entry)) return;
       metrics.lcp = Math.max(entry.startTime - activationStart, 0);
     });
 
@@ -577,7 +582,7 @@ type MetricEntry = PerformanceEntry & {
         const fcpEntry = getEntriesByType('paint')?.find(
           entry => entry.name === 'first-contentful-paint',
         );
-        if (fcpEntry) {
+        if (fcpEntry && firedWhileVisible(fcpEntry)) {
           metrics.fcp = Math.max(fcpEntry.startTime - activationStart, 0);
         }
       }
@@ -585,7 +590,7 @@ type MetricEntry = PerformanceEntry & {
       if (metrics.lcp === undefined) {
         const lcpEntries = getEntriesByType('largest-contentful-paint');
         const lcpEntry = lcpEntries?.[lcpEntries.length - 1];
-        if (lcpEntry) {
+        if (lcpEntry && firedWhileVisible(lcpEntry)) {
           metrics.lcp = Math.max(lcpEntry.startTime - activationStart, 0);
         }
       }
@@ -621,7 +626,10 @@ type MetricEntry = PerformanceEntry & {
     timeoutId = setTimeout(sendPerformance, 10000);
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') sendPerformance();
+      if (document.visibilityState === 'hidden') {
+        firstHiddenTime = Math.min(firstHiddenTime, performance.now());
+        sendPerformance();
+      }
     });
     window.addEventListener('pagehide', sendPerformance);
   };
